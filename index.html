@@ -1,0 +1,472 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>はみがきタイマー</title>
+<style>
+  :root{
+    --ink:#333;
+    --line:#cdd8e0;
+    --run:#1565c0;      /* 磨いている最中 青 */
+    --run-bg:#e3f2fd;
+    --soon:#ef6c00;     /* のこりわずか だいだい */
+    --soon-bg:#fff3e0;
+    --done:#2e7d32;     /* おわり 緑 */
+    --done-bg:#e8f5e9;
+  }
+  *{box-sizing:border-box; margin:0; padding:0;}
+  html,body{height:100%;}
+  body{
+    font-family:"BIZ UDPGothic","Yu Gothic UI","Hiragino Kaku Gothic ProN",sans-serif;
+    background:#eef3f6; color:var(--ink);
+    display:flex; flex-direction:column; height:100vh; overflow:hidden;
+    -webkit-user-select:none; user-select:none;
+  }
+
+  /* ── 上部バー ── */
+  #topbar{
+    display:flex; align-items:center; gap:12px; flex-wrap:wrap;
+    background:#fff; padding:8px 16px; border-bottom:3px solid var(--line);
+  }
+  #topbar h1{font-size:20px; color:#546e7a; white-space:nowrap;}
+  #who{
+    font-size:22px; padding:8px 12px; border:2px solid #90a4ae; border-radius:12px;
+    font-family:inherit; background:#fff; color:var(--ink); min-width:190px; max-width:280px;
+  }
+  #who:disabled{background:#f4f4f4; color:#bbb;}
+  .timebtn{
+    font-size:22px; font-weight:bold; padding:9px 20px; border-radius:12px; cursor:pointer;
+    border:3px solid var(--run); background:var(--run-bg); color:#0d47a1; font-family:inherit;
+    white-space:nowrap;
+  }
+  .timebtn:active{transform:translateY(1px);}
+  .timebtn:disabled{border-color:#ccc; background:#f4f4f4; color:#bbb; cursor:default; transform:none;}
+  #spacer{flex:1;}
+  .iconbtn{
+    font-size:22px; padding:8px 14px; border-radius:12px; cursor:pointer;
+    border:2px solid #90a4ae; background:#fff; font-family:inherit; white-space:nowrap;
+  }
+  .iconbtn:active{transform:translateY(1px);}
+  #note{font-size:17px; font-weight:bold; color:#c62828;}
+
+  /* ── カードの置き場 ── */
+  #grid{
+    flex:1; min-height:0; padding:12px; display:grid; gap:12px;
+    grid-template-columns:repeat(1,1fr); align-content:stretch;
+  }
+  #empty{
+    flex:1; display:flex; align-items:center; justify-content:center; text-align:center;
+    font-size:clamp(20px,3.2vh,34px); color:#90a4ae; line-height:1.9; padding:20px;
+  }
+
+  /* ── カード ── */
+  .card{
+    position:relative; border-radius:20px; border:5px solid var(--run); background:var(--run-bg);
+    display:flex; flex-direction:column; justify-content:center; align-items:center;
+    padding:10px 16px; min-width:0; min-height:0; overflow:hidden;
+  }
+  .card.soon{border-color:var(--soon); background:var(--soon-bg);}
+  .card.done{border-color:var(--done); background:var(--done-bg); animation:blink 0.7s ease-in-out infinite;}
+  @keyframes blink{
+    0%,100%{background:var(--done-bg);}
+    50%{background:#b9f6ca;}
+  }
+  .name{
+    font-weight:bold; line-height:1.1; white-space:nowrap; overflow:hidden;
+    text-overflow:ellipsis; max-width:100%; color:#37474f;
+  }
+  .time{font-weight:bold; line-height:1.0; letter-spacing:0.02em; color:var(--run); font-variant-numeric:tabular-nums;}
+  .card.soon .time{color:var(--soon);}
+  .card.done .time{color:var(--done);}
+  .bar{
+    width:88%; background:#fff; border-radius:999px; overflow:hidden; border:2px solid rgba(0,0,0,.12);
+  }
+  .bar > i{display:block; height:100%; background:var(--run); border-radius:999px;}
+  .card.soon .bar > i{background:var(--soon);}
+  .card.done .bar > i{background:var(--done);}
+  .del{
+    position:absolute; top:6px; right:8px; border:none; background:transparent; cursor:pointer;
+    color:#90a4ae; font-family:inherit; font-weight:bold; line-height:1;
+    padding:4px 8px; border-radius:10px;
+  }
+  .del:hover{background:rgba(0,0,0,.06); color:#546e7a;}
+
+  /* ── 設定パネル ── */
+  #mask{
+    position:fixed; inset:0; background:rgba(0,0,0,.45); display:none;
+    align-items:center; justify-content:center; padding:20px; z-index:10;
+  }
+  #mask.open{display:flex;}
+  #panel{
+    background:#fffdf5; border:4px solid #b0bec5; border-radius:18px;
+    width:min(720px,100%); max-height:100%; overflow-y:auto; padding:20px 24px;
+  }
+  #panel h2{font-size:24px; color:#37474f; margin-bottom:6px;}
+  #panel p.help{font-size:17px; color:#607d8b; line-height:1.7; margin-bottom:10px;}
+  #roster{
+    width:100%; height:min(46vh,360px); font-size:20px; line-height:1.7; padding:10px 12px;
+    border:2px solid #90a4ae; border-radius:12px; font-family:inherit; resize:vertical;
+    -webkit-user-select:text; user-select:text;
+  }
+  .row{display:flex; align-items:center; gap:14px; flex-wrap:wrap; margin-top:14px;}
+  .toggle{display:flex; align-items:center; gap:8px; font-size:19px; cursor:pointer;}
+  .toggle input{width:22px; height:22px; cursor:pointer;}
+  .pbtn{
+    font-size:20px; font-weight:bold; padding:10px 22px; border-radius:12px; cursor:pointer;
+    border:3px solid #1565c0; background:#e3f2fd; color:#0d47a1; font-family:inherit;
+  }
+  .pbtn.plain{border-color:#90a4ae; background:#fff; color:#546e7a;}
+  #saved{font-size:18px; font-weight:bold; color:var(--done); opacity:0; transition:opacity .2s;}
+  #saved.show{opacity:1;}
+</style>
+</head>
+<body>
+
+<div id="topbar">
+  <h1>はみがきタイマー</h1>
+  <select id="who"></select>
+  <button class="timebtn" data-min="1">1分</button>
+  <button class="timebtn" data-min="2">2分</button>
+  <button class="timebtn" data-min="3">3分</button>
+  <span id="note"></span>
+  <span id="spacer"></span>
+  <button class="iconbtn" id="soundBtn">🔊 音あり</button>
+  <button class="iconbtn" id="gearBtn">⚙ 名前</button>
+</div>
+
+<div id="grid"></div>
+<div id="empty">名前をえらんで、<b>1分・2分・3分</b>のボタンをおすと<br>タイマーがはじまります</div>
+
+<div id="mask">
+  <div id="panel">
+    <h2>名前のとうろく</h2>
+    <p class="help">
+      1行に1人ずつ名前を書きます。エクセルの名簿をそのまま貼り付けられます。<br>
+      この欄の文字をぜんぶ選んでコピーしておけば、名前が消えたときに貼り付けるだけで元に戻せます。
+    </p>
+    <textarea id="roster" spellcheck="false" placeholder="やまだ たろう&#10;さとう はなこ&#10;すずき いちろう"></textarea>
+    <div class="row">
+      <label class="toggle"><input type="checkbox" id="chkChime">おわりのチャイムを鳴らす</label>
+      <label class="toggle"><input type="checkbox" id="chkSpeak">おわりに名前を読み上げる</label>
+    </div>
+    <div class="row">
+      <button class="pbtn" id="saveBtn">ほぞんする</button>
+      <button class="pbtn plain" id="closeBtn">とじる</button>
+      <span id="saved">ほぞんしました</span>
+    </div>
+  </div>
+</div>
+
+<script>
+(function(){
+  'use strict';
+
+  var MAX = 15;                 // 同時に表示できる人数
+  var DONE_HOLD = 10000;        // 「おわり」を出しておく時間(ms)
+  var K_ROSTER = 'hamigaki.roster';
+  var K_CHIME  = 'hamigaki.chime';
+  var K_SPEAK  = 'hamigaki.speak';
+
+  var elGrid  = document.getElementById('grid');
+  var elEmpty = document.getElementById('empty');
+  var elWho   = document.getElementById('who');
+  var elNote  = document.getElementById('note');
+  var elMask  = document.getElementById('mask');
+  var elRoster= document.getElementById('roster');
+  var elChime = document.getElementById('chkChime');
+  var elSpeak = document.getElementById('chkSpeak');
+  var elSound = document.getElementById('soundBtn');
+  var elSaved = document.getElementById('saved');
+  var timeBtns = Array.prototype.slice.call(document.querySelectorAll('.timebtn'));
+
+  var roster = [];    // 名簿(文字列の配列)
+  var cards  = [];    // {id,name,total,endAt,doneAt,el,elName,elTime,elFill}
+  var nextId = 1;
+  var useChime = true, useSpeak = true;
+
+  /* ── 保存まわり ─────────────────────────── */
+  function load(){
+    try{
+      var r = localStorage.getItem(K_ROSTER);
+      roster = r ? JSON.parse(r) : [];
+      if(!Array.isArray(roster)) roster = [];
+      var c = localStorage.getItem(K_CHIME);
+      var s = localStorage.getItem(K_SPEAK);
+      useChime = (c === null) ? true : (c === '1');
+      useSpeak = (s === null) ? true : (s === '1');
+    }catch(e){ roster = []; }
+  }
+  function saveRoster(){
+    try{ localStorage.setItem(K_ROSTER, JSON.stringify(roster)); }catch(e){}
+  }
+  function saveSound(){
+    try{
+      localStorage.setItem(K_CHIME, useChime ? '1' : '0');
+      localStorage.setItem(K_SPEAK, useSpeak ? '1' : '0');
+    }catch(e){}
+  }
+
+  /* ── 音 ───────────────────────────────── */
+  var actx = null;
+  function audio(){
+    if(!actx){
+      var C = window.AudioContext || window.webkitAudioContext;
+      if(!C) return null;
+      actx = new C();
+    }
+    if(actx.state === 'suspended') actx.resume();
+    return actx;
+  }
+  function chime(){
+    if(!useChime) return;
+    var a = audio(); if(!a) return;
+    // ピン・ポーン(2音)
+    [[988.0, 0], [659.3, 0.18]].forEach(function(p){
+      var o = a.createOscillator(), g = a.createGain();
+      var t = a.currentTime + p[1];
+      o.type = 'triangle';
+      o.frequency.setValueAtTime(p[0], t);
+      g.gain.setValueAtTime(0.0001, t);
+      g.gain.exponentialRampToValueAtTime(0.35, t + 0.02);
+      g.gain.exponentialRampToValueAtTime(0.0001, t + 0.55);
+      o.connect(g); g.connect(a.destination);
+      o.start(t); o.stop(t + 0.6);
+    });
+  }
+  function speak(name){
+    if(!useSpeak) return;
+    if(!('speechSynthesis' in window)) return;
+    try{
+      var u = new SpeechSynthesisUtterance(name + 'さん、おわりです');
+      u.lang = 'ja-JP'; u.rate = 1.0; u.pitch = 1.05;
+      window.speechSynthesis.speak(u);
+    }catch(e){}
+  }
+  function soundLabel(){
+    elSound.textContent = (useChime || useSpeak) ? '🔊 音あり' : '🔇 音なし';
+  }
+
+  /* ── 名前のドロップダウン ───────────────── */
+  function activeNames(){
+    var s = {};
+    cards.forEach(function(c){ s[c.name] = true; });
+    return s;
+  }
+  function refreshWho(){
+    var busy = activeNames();
+    var keep = elWho.value;
+    var list = roster.filter(function(n){ return !busy[n]; });
+    elWho.innerHTML = '';
+    if(roster.length === 0){
+      elWho.appendChild(new Option('⚙ から名前をとうろく', ''));
+    }else if(list.length === 0){
+      elWho.appendChild(new Option('ぜんいん はみがき中', ''));
+    }else{
+      elWho.appendChild(new Option('だれ？', ''));
+      list.forEach(function(n){ elWho.appendChild(new Option(n, n)); });
+    }
+    if(keep && list.indexOf(keep) >= 0) elWho.value = keep;
+    elWho.disabled = (list.length === 0);
+    updateButtons();
+  }
+  function updateButtons(){
+    var full = cards.length >= MAX;
+    var ok = !!elWho.value && !full;
+    timeBtns.forEach(function(b){ b.disabled = !ok; });
+    elNote.textContent = full ? ('いま' + MAX + '人です。だれかが おわるまで まってください') : '';
+  }
+
+  /* ── カード ───────────────────────────── */
+  function add(name, minutes){
+    if(cards.length >= MAX) return;
+    var el = document.createElement('div');
+    el.className = 'card';
+
+    var elName = document.createElement('div'); elName.className = 'name'; elName.textContent = name;
+    var elTime = document.createElement('div'); elTime.className = 'time';
+    var bar = document.createElement('div'); bar.className = 'bar';
+    var fill = document.createElement('i'); fill.style.width = '100%'; bar.appendChild(fill);
+    var del = document.createElement('button'); del.className = 'del'; del.textContent = '×';
+    del.title = 'とりけす';
+
+    el.appendChild(del); el.appendChild(elName); el.appendChild(elTime); el.appendChild(bar);
+    elGrid.appendChild(el);
+
+    var card = {
+      id: nextId++, name: name, total: minutes * 60000,
+      endAt: Date.now() + minutes * 60000, doneAt: 0,
+      el: el, elName: elName, elTime: elTime, elFill: fill
+    };
+    del.addEventListener('click', function(){ remove(card.id); });
+    cards.push(card);
+
+    chimeUnlock();       // 最初のタップで音を使えるようにしておく
+    layout();
+    refreshWho();
+    draw();
+  }
+  function remove(id){
+    for(var i = 0; i < cards.length; i++){
+      if(cards[i].id === id){
+        elGrid.removeChild(cards[i].el);
+        cards.splice(i, 1);
+        break;
+      }
+    }
+    layout();
+    refreshWho();
+  }
+  function chimeUnlock(){
+    var a = audio(); if(!a) return;
+    // 無音を1回鳴らして自動再生ブロックを解除する
+    try{
+      var o = a.createOscillator(), g = a.createGain();
+      g.gain.setValueAtTime(0.0001, a.currentTime);
+      o.connect(g); g.connect(a.destination);
+      o.start(a.currentTime); o.stop(a.currentTime + 0.01);
+    }catch(e){}
+  }
+
+  /* ── ならべ方(人数に合わせて自動で大きさを変える) ── */
+  var lastW = -1, lastH = -1;
+  function layout(){
+    var n = cards.length;
+    elEmpty.style.display = n ? 'none' : 'flex';
+    elGrid.style.display  = n ? 'grid' : 'none';
+    if(!n){ lastW = lastH = -1; return; }
+
+    var W = elGrid.clientWidth, H = elGrid.clientHeight;
+    if(W <= 0 || H <= 0) return;
+    lastW = W; lastH = H;
+    var gap = 12, pad = 0;
+    var best = null;
+    for(var cols = 1; cols <= n; cols++){
+      var rows = Math.ceil(n / cols);
+      var cw = (W - pad - gap * (cols - 1)) / cols;
+      var ch = (H - pad - gap * (rows - 1)) / rows;
+      if(cw <= 0 || ch <= 0) continue;
+      // 横長(1.7:1)のカードを一番大きく取れる列数をえらぶ
+      var side = Math.min(cw / 1.7, ch);
+      if(!best || side > best.side) best = {cols: cols, rows: rows, cw: cw, ch: ch, side: side};
+    }
+    if(!best) return;
+
+    elGrid.style.gridTemplateColumns = 'repeat(' + best.cols + ',1fr)';
+    elGrid.style.gridTemplateRows    = 'repeat(' + best.rows + ',1fr)';
+
+    var timeFs = Math.max(18, Math.min(best.ch * 0.44, best.cw * 0.30));
+    var nameFs = Math.max(14, Math.min(best.ch * 0.20, best.cw * 0.155));
+    var barH   = Math.max(8,  Math.min(best.ch * 0.11, 34));
+    var delFs  = Math.max(16, Math.min(best.ch * 0.13, 34));
+    var bw     = Math.max(3,  Math.min(best.ch * 0.035, 8));
+
+    cards.forEach(function(c){
+      c.elTime.style.fontSize = timeFs + 'px';
+      c.elName.style.fontSize = nameFs + 'px';
+      c.elFill.parentNode.style.height = barH + 'px';
+      c.el.style.borderWidth = bw + 'px';
+      c.el.querySelector('.del').style.fontSize = delFs + 'px';
+    });
+  }
+
+  /* ── 毎秒の書きかえ ─────────────────────── */
+  function mmss(ms){
+    if(ms < 0) ms = 0;
+    var s = Math.ceil(ms / 1000);
+    var m = Math.floor(s / 60);
+    var r = s % 60;
+    return m + ':' + (r < 10 ? '0' : '') + r;
+  }
+  function draw(){
+    var now = Date.now();
+    var expired = [];
+    // 画面の大きさが変わったのに気づけていなければ、ここで組み直す
+    if(cards.length && (elGrid.clientWidth !== lastW || elGrid.clientHeight !== lastH)) layout();
+    cards.forEach(function(c){
+      var left = c.endAt - now;
+      if(c.doneAt){
+        if(now - c.doneAt >= DONE_HOLD) expired.push(c.id);
+        return;
+      }
+      if(left <= 0){
+        c.doneAt = now;
+        c.el.className = 'card done';
+        c.elTime.textContent = 'おわり';
+        c.elFill.style.width = '0%';
+        chime();
+        speak(c.name);
+        return;
+      }
+      c.elTime.textContent = mmss(left);
+      c.elFill.style.width = (left / c.total * 100) + '%';
+      var soon = left <= 30000;
+      var want = soon ? 'card soon' : 'card';
+      if(c.el.className !== want) c.el.className = want;
+    });
+    expired.forEach(remove);
+  }
+
+  /* ── 設定パネル ───────────────────────── */
+  function openPanel(){
+    elRoster.value = roster.join('\n');
+    elChime.checked = useChime;
+    elSpeak.checked = useSpeak;
+    elSaved.className = '';
+    elMask.className = 'open';
+    elRoster.focus();
+  }
+  function closePanel(){ elMask.className = ''; }
+  function savePanel(){
+    roster = elRoster.value.split('\n')
+      .map(function(s){ return s.replace(/\s+$/,'').replace(/^\s+/,''); })
+      .filter(function(s){ return s.length > 0; });
+    // 同じ名前が2つあるとどちらか分からなくなるので、後ろを消す
+    var seen = {}, uniq = [];
+    roster.forEach(function(n){ if(!seen[n]){ seen[n] = 1; uniq.push(n); } });
+    roster = uniq;
+    useChime = elChime.checked;
+    useSpeak = elSpeak.checked;
+    saveRoster(); saveSound(); soundLabel(); refreshWho();
+    elRoster.value = roster.join('\n');
+    elSaved.className = 'show';
+    setTimeout(function(){ elSaved.className = ''; }, 1600);
+  }
+
+  /* ── つなぎこみ ───────────────────────── */
+  timeBtns.forEach(function(b){
+    b.addEventListener('click', function(){
+      var name = elWho.value;
+      if(!name) return;
+      add(name, parseInt(b.getAttribute('data-min'), 10));
+    });
+  });
+  elWho.addEventListener('change', updateButtons);
+  document.getElementById('gearBtn').addEventListener('click', openPanel);
+  document.getElementById('saveBtn').addEventListener('click', savePanel);
+  document.getElementById('closeBtn').addEventListener('click', closePanel);
+  elMask.addEventListener('click', function(e){ if(e.target === elMask) closePanel(); });
+  document.addEventListener('keydown', function(e){ if(e.key === 'Escape') closePanel(); });
+  elSound.addEventListener('click', function(){
+    var on = (useChime || useSpeak);
+    useChime = !on; useSpeak = !on;
+    saveSound(); soundLabel();
+    if(!on) chimeUnlock();
+  });
+  window.addEventListener('resize', layout);
+  // 全画面の切りかえやズームでは resize が飛ばないことがあるので、
+  // 置き場そのものの大きさを見張って文字サイズを追従させる
+  if(window.ResizeObserver){
+    var ro = new ResizeObserver(function(){ layout(); });
+    ro.observe(elGrid);
+  }
+
+  load();
+  soundLabel();
+  refreshWho();
+  layout();
+  setInterval(draw, 200);
+})();
+</script>
+</body>
+</html>
